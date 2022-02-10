@@ -10,7 +10,7 @@
 ##### Inform version here #####
 import io
 
-version = "v1.3.0"
+version = "v1.4.0"
 
 ##### Import python2 native modules #####
 import os
@@ -32,8 +32,8 @@ j2send = """{
 "port": "{{ port }}",
 "protocol": "{{ proto }}",
 "version": "%s",
-"website": "https://github.com/packetsar/checkmyip",
-"sponsor": "Sponsored by ConvergeOne, https://www.convergeone.com/"
+"website": "https://github.com/luisbandalap/checkmyip",
+"forked-from": "https://github.com/packetsar/checkmyip"
 }""" % version
 
 
