@@ -31,6 +31,7 @@ j2send = """{
 "ip": "{{ ip }}",
 "port": "{{ port }}",
 "protocol": "{{ proto }}",
+"hostname": "{{ hostname }}",
 "version": "%s",
 "website": "https://github.com/luisbandalap/checkmyip",
 "forked-from": "https://github.com/packetsar/checkmyip"
@@ -154,15 +155,13 @@ def j2format(j2tmp, valdict):
 
 
 ##### Cleans IP addresses coming from socket library #####
-def cleanip(addr):
+def clean_ip(addr):
     ip = addr[0]
     port = addr[1]
-    family = "ipv6"
     if len(ip) > 6:  # If this IP is not a super short v6 address
         if ip[:7] == "::ffff:":  # If this is a prefixed IPv4 address
             ip = ip.replace("::ffff:", "")  # Return the cleaned IP
-            family = "ipv4"
-    return ip, port, family  # Return the uncleaned IP if not matched
+    return ip, port  # Return the uncleaned IP if not matched
 
 
 def get_ip_family(ip):
@@ -173,6 +172,8 @@ def get_ip_family(ip):
             return False
 
     def is_ipv6(s):
+        if len(s) == 0:
+            return True
         if len(s) > 4:
             return False
         try:
@@ -182,7 +183,7 @@ def get_ip_family(ip):
 
     if ip.count(".") == 3 and all(is_ipv4(i) for i in ip.split(".")):
         return "ipv4"
-    if ip.count(":") == 7 and all(is_ipv6(i) for i in ip.split(":")):
+    if ip.count(":") > 1 and all(is_ipv6(i) for i in ip.split(":")):
         return "ipv6"
     return "undefined"
 
@@ -196,9 +197,12 @@ def listener(port, talker):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((listen_ip, listen_port))
         sock.listen(buffer_size)
-        client, addr = sock.accept()
-        ip, port, family = cleanip(addr)  # Get all cleaned IP info
-        valdict = {"ip": ip, "port": port, "family": family}  # Put in dict
+        client, address = sock.accept()
+        ip, port = clean_ip(address)  # Get all cleaned IP info
+        # Hostname is resolved doing inverse dns lookup
+        hostname, tmp_port = socket.getnameinfo((ip, 0), 0)
+        ip_family = get_ip_family(ip)
+        valdict = {"ip": ip, "port": port, "family": ip_family, "hostname": hostname}  # Put in dict
         thread = threading.Thread(target=talker, args=(client, valdict))
         thread.start()  # Start talker thread to listen to port
 
@@ -274,6 +278,9 @@ def http_talker(client, valdict, proto="http"):
             ip_family = get_ip_family(x_forwarded_ips[0].strip())
             valdict.update({"ip": x_forwarded_ips[0].strip()})
             valdict.update({"family": ip_family})
+            # Hostname is resolved doing inverse dns lookup
+            hostname, tmp_port = socket.getnameinfo((x_forwarded_ips[0].strip(), 0), 0)
+            valdict.update({"hostname": hostname})
 
         # Proceed with standard HTTP response (with headers)
         valdict.update({"proto": proto})
