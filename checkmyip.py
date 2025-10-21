@@ -119,26 +119,36 @@ class rsa_key:
     private key string.
     Publishes a callable method that returns the paramiko.RSAKey object.
     """
-    data = """-----BEGIN RSA PRIVATE KEY-----
-    MIICWgIBAAKBgQDTj1bqB4WmayWNPB+8jVSYpZYk80Ujvj680pOTh2bORBjbIAyz
-    oWGW+GUjzKxTiiPvVmxFgx5wdsFvF03v34lEVVhMpouqPAYQ15N37K/ir5XY+9m/
-    d8ufMCkjeXsQkKqFbAlQcnWMCRnOoPHS3I4vi6hmnDDeeYTSRvfLbW0fhwIBIwKB
-    gBIiOqZYaoqbeD9OS9z2K9KR2atlTxGxOJPXiP4ESqP3NVScWNwyZ3NXHpyrJLa0
-    EbVtzsQhLn6rF+TzXnOlcipFvjsem3iYzCpuChfGQ6SovTcOjHV9z+hnpXvQ/fon
-    soVRZY65wKnF7IAoUwTmJS9opqgrN6kRgCd3DASAMd1bAkEA96SBVWFt/fJBNJ9H
-    tYnBKZGw0VeHOYmVYbvMSstssn8un+pQpUm9vlG/bp7Oxd/m+b9KWEh2xPfv6zqU
-    avNwHwJBANqzGZa/EpzF4J8pGti7oIAPUIDGMtfIcmqNXVMckrmzQ2vTfqtkEZsA
-    4rE1IERRyiJQx6EJsz21wJmGV9WJQ5kCQQDwkS0uXqVdFzgHO6S++tjmjYcxwr3g
-    H0CoFYSgbddOT6miqRskOQF3DZVkJT3kyuBgU2zKygz52ukQZMqxCb1fAkASvuTv
-    qfpH87Qq5kQhNKdbbwbmd2NxlNabazPijWuphGTdW0VfJdWfklyS2Kr+iqrs/5wV
-    HhathJt636Eg7oIjAkA8ht3MQ+XSl9yIJIS8gVpbPxSw5OMfw0PjVE7tBdQruiSc
-    nvuQES5C9BMHjF39LZiGH1iLQy7FgdHyoP+eodI7
-    -----END RSA PRIVATE KEY-----
-    """
-
     def readlines(self):
-        """"For use by paramiko.RSAKey.from_private_key mthd"""
-        return self.data.split("\n")
+        """
+        Initialize and read the RSA key object, Checks for existing RSA key file,
+        if not found generates a new one
+        Raises:
+            Exception: If unable to load or generate the RSA key.
+        """
+        self.key_bits = 2048
+        self.private_key_path = os.path.join(os.getcwd(), "id_rsa")
+        key_exists = os.path.isfile(self.private_key_path)
+        if not key_exists:
+            log("Generating new RSA key at %s" % self.private_key_path)
+            key = paramiko.RSAKey.generate(bits=self.key_bits, progress_func=self.key_creation_progress_func)
+            key.write_private_key_file(self.private_key_path)
+            log("RSA key generation complete")
+        try:
+            self.data = paramiko.RSAKey.from_private_key_file(self.private_key_path).get_private_key_str()  
+        except (paramiko.ssh_exception.SSHException, paramiko.ssh_exception.SSHException) :
+            log("Failed to load RSA key from %s" % self.private_key_path)
+            os.move(self.private_key_path, self.private_key_path + ".corrupt")
+            log("Renamed corrupt key to %s.corrupt" % self.private_key_path)
+            return self.readlines()  # Retry reading the key
+        except Exception:   
+            raise
+        return self.data.splitlines(keepends=True)
+    
+    def key_creation_progress_func(self, completed, total):
+        """Progress function for RSA key generation"""
+        percent_complete = (completed / total) * 100
+        log(f"Generating RSA Key: {percent_complete:.2f}% complete", timestamp=True)
 
     def __call__(self):
         """Recursive method uses own object as arg when called"""
