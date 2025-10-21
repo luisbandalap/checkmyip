@@ -45,11 +45,11 @@ class log_management:
         - console(data) : Prints data to console without timestamp
     """
     def __init__(self):
-        self.logpath = "/etc/checkmyip/"  # Log file directory path
-        self.logfile = "/etc/checkmyip/%scheckmyip.log" % \
-                       time.strftime("%Y-%m-%d_")  # Log file full path
-        self.paramikolog = "/etc/checkmyip/%sssh.log" % \
-                           time.strftime("%Y-%m-%d_")  # SSH log file path
+        self.logpath = os.path.join(os.getcwd(), "logs")  # Log file directory path
+        self.logfile = os.path.join(self.logpath, "%scheckmyip.log" % \
+                       time.strftime("%Y-%m-%d_"))  # Log file full path
+        self.paramikolog = os.path.join(self.logpath, "%sssh.log" % \
+                           time.strftime("%Y-%m-%d_"))  # SSH log file path
         self.thread = threading.Thread(target=self._change_logfiles)
         self.thread.daemon = True
         self.thread.start()  # Start talker thread to listen to port
@@ -106,10 +106,10 @@ class log_management:
     def _change_logfiles(self, thread=True):
         while True:
             time.sleep(10)
-            self.logfile = "/etc/checkmyip/%scheckmyip.log" % \
-                           time.strftime("%Y-%m-%d_")  # Log file full path
-            self.paramikolog = "/etc/checkmyip/%sssh.log" % \
-                               time.strftime("%Y-%m-%d_")  # SSH log file path
+            self.logfile = os.path.join(self.logpath, "%scheckmyip.log" % \
+                           time.strftime("%Y-%m-%d_"))  # Log file full path
+            self.paramikolog = os.path.join(self.logpath, "%sssh.log" % \
+                               time.strftime("%Y-%m-%d_"))  # SSH log file path
             paramiko.util.log_to_file(self.paramikolog)
 
 
