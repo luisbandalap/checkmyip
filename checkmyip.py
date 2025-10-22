@@ -46,10 +46,10 @@ class log_management:
     """
     def __init__(self):
         self.logpath = os.path.join(os.getcwd(), "logs")  # Log file directory path
-        self.logfile = os.path.join(self.logpath, "%scheckmyip.log" % \
-                       time.strftime("%Y-%m-%d_"))  # Log file full path
-        self.paramikolog = os.path.join(self.logpath, "%sssh.log" % \
-                           time.strftime("%Y-%m-%d_"))  # SSH log file path
+        self.logfile = os.path.join(
+            self.logpath, "checkmyip_%s.log" % time.strftime("%Y%m%d"))  # Log file full path
+        self.paramikolog = os.path.join(
+            self.logpath, "ssh_%s.log" % time.strftime("%Y%m%d"))  # SSH log file path
         self.thread = threading.Thread(target=self._change_logfiles)
         self.thread.daemon = True
         self.thread.start()  # Start talker thread to listen to port
@@ -68,12 +68,11 @@ class log_management:
         Raises:
             IOError: If unable to write to logfile
         """
-        logdata = time.strftime("%Y-%m-%d %H:%M:%S") + ":   " + data + "\n"
+        logdata = "%s: %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), data)
         if self.can_log:
             try:  # Try to write to log, create log dir if fail
-                f = open(self.logfile, 'a')
-                f.write(logdata)
-                f.close()
+                with open(self.logfile, 'a') as f:
+                    f.write(logdata)
             except IOError:
                 self._console("Unable to log to logfile %s. Creating log directory" % self.logfile)
                 self.can_log = False
@@ -82,7 +81,7 @@ class log_management:
 
     def _console(self, data, timestamp=False):
         if timestamp:
-            logdata = time.strftime("%Y-%m-%d %H:%M:%S") + ":   " + data + "\n"
+            logdata = "%s: %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), data)
         else:
             logdata = data
         print(logdata, flush=True)
@@ -99,17 +98,17 @@ class log_management:
         Raises:
             Exception: If unable to create the log directory
         """
-        os.system('mkdir -p ' + self.logpath)
+        os.makedirs(name=self.logpath, exist_ok=True)
         self._console("Logpath (%s) created" % self.logpath)
         self.can_log = True
 
     def _change_logfiles(self, thread=True):
         while True:
             time.sleep(10)
-            self.logfile = os.path.join(self.logpath, "%scheckmyip.log" % \
-                           time.strftime("%Y-%m-%d_"))  # Log file full path
-            self.paramikolog = os.path.join(self.logpath, "%sssh.log" % \
-                               time.strftime("%Y-%m-%d_"))  # SSH log file path
+            self.logfile = os.path.join(
+                self.logpath, "checkmyip_%s.log" % time.strftime("%Y%m%d"))  # Log file full path
+            self.paramikolog = os.path.join(
+                self.logpath, "ssh_%s.log" % time.strftime("%Y%m%d"))  # SSH log file path
             paramiko.util.log_to_file(self.paramikolog)
 
 
@@ -119,40 +118,56 @@ class rsa_key:
     private key string.
     Publishes a callable method that returns the paramiko.RSAKey object.
     """
-    def readlines(self):
+
+    key_bits = 2048
+    private_key_path = os.path.join(os.getcwd(), "id_rsa")
+    ssh_key_data = None  # The RSA key object
+
+    def readkey(self, attempt=0):
         """
         Initialize and read the RSA key object, Checks for existing RSA key file,
         if not found generates a new one
+        Returns:
+            paramiko.RSAKey: The RSA key object
         Raises:
             Exception: If unable to load or generate the RSA key.
         """
-        self.key_bits = 2048
-        self.private_key_path = os.path.join(os.getcwd(), "id_rsa")
-        key_exists = os.path.isfile(self.private_key_path)
-        if not key_exists:
-            log("Generating new RSA key at %s" % self.private_key_path)
-            key = paramiko.RSAKey.generate(bits=self.key_bits, progress_func=self.key_creation_progress_func)
-            key.write_private_key_file(self.private_key_path)
-            log("RSA key generation complete")
-        try:
-            self.data = paramiko.RSAKey.from_private_key_file(self.private_key_path).get_private_key_str()  
-        except (paramiko.ssh_exception.SSHException, paramiko.ssh_exception.SSHException) :
-            log("Failed to load RSA key from %s" % self.private_key_path)
-            os.move(self.private_key_path, self.private_key_path + ".corrupt")
-            log("Renamed corrupt key to %s.corrupt" % self.private_key_path)
-            return self.readlines()  # Retry reading the key
-        except Exception:   
+        if self.ssh_key_data is not None:
+            return self.ssh_key_data  # Return key if already loaded
+
+        if attempt > 2:
+            raise Exception("Unable to load or generate RSA key after multiple attempts")
+
+        if not os.path.isfile(self.private_key_path):  # create new RSA key if not found
+            key = paramiko.RSAKey.generate(bits=self.key_bits)
+            key.write_private_key_file(filename=self.private_key_path, password=None)
+
+        try:  # Try to load existing or created RSA key
+            tmp_key = paramiko.RSAKey.from_private_key_file(filename=self.private_key_path, password=None)
+            tmp_key.sign_ssh_data(b"test")  # Test signing to verify key integrity
+            self.ssh_key_data = tmp_key  # Store the loaded key
+        except (paramiko.ssh_exception.SSHException, paramiko.ssh_exception.PasswordRequiredException):
+            os.rename(self.private_key_path, self.private_key_path + ".corrupt")
+        except Exception:
             raise
-        return self.data.splitlines(keepends=True)
-    
-    def key_creation_progress_func(self, completed, total):
-        """Progress function for RSA key generation"""
-        percent_complete = (completed / total) * 100
-        log(f"Generating RSA Key: {percent_complete:.2f}% complete", timestamp=True)
+
+        return self.readkey(attempt+1)  # Retry loading the key
 
     def __call__(self):
         """Recursive method uses own object as arg when called"""
-        return paramiko.RSAKey.from_private_key(self)
+        return self.readkey()
+
+
+class ssh_host_key:
+    """
+    Persistent SSH host key class used by paramiko to get the RSA host key
+    for the SSH server. Uses nested calls to get the RSA key object.
+    """
+    key = rsa_key()()  # Nested call to get RSA key object
+
+    def __call__(self):
+        """Callable method to return the RSA key object"""
+        return self.key
 
 
 class ssh_server(paramiko.ServerInterface):
@@ -293,20 +308,23 @@ def ssh_talker(client, valdict, proto="ssh"):
     request_id = uuid.uuid4()
     valdict.update({"proto": proto, "requestid": request_id})  # Add protocol and requestid to dict
     log(j2format(j2log, valdict))
-    t = paramiko.Transport(client, gss_kex=True)
-    t.set_gss_host(socket.getfqdn(""))
-    t.load_server_moduli()
-    t.add_server_key(rsa_key()())  # RSA key object nested call
+    transport = paramiko.Transport(client, gss_kex=True)
+    transport.set_gss_host(socket.getfqdn(""))
+    transport.load_server_moduli()
+    transport.add_server_key(ssh_host_key()())  # RSA key object nested call
     server = ssh_server()
-    t.start_server(server=server)
-    chan = t.accept(20)
-    if chan:
-        server.event.wait(10)
-        chan.send('%s\n' % j2format(j2send, valdict))  # Send the response
-        thread = threading.Thread(target=makefile)
-        thread.start()  # Start hack in thread since it hangs indefinately
-        time.sleep(1)  # Wait a second
-        chan.close()  # And kill the SSH channel
+    try:
+        transport.start_server(server=server)
+        with transport.accept(20) as chan:  # Wait for client to open channel
+            if chan:
+                server.event.wait(10)
+                chan.send('%s\n' % j2format(j2send, valdict))  # Send the response
+                thread = threading.Thread(target=makefile)
+                thread.start()  # Start hack in thread since it hangs indefinately
+                time.sleep(1)  # Wait a second
+    except (EOFError, IOError):  # If the client disconnects early
+        log("Client %s (request: %s) disconnected early" % (valdict["ip"], request_id))
+        pass
     client.close()  # And kill the session
 
 
