@@ -21,7 +21,7 @@ import uuid
 version = "v1.4.1"
 
 # Jinja formatting for logging queries
-j2log = "Connection from: {{ ip }} ({{ port }}) ({{ proto }}) (request: {{ requestid }})"
+j2log = "Connection from [ip: {{ ip }}, port: {{ port }}, proto: {{ proto }}, id: {{ requestid }}]"
 
 # Jinja formatting for response queries
 j2send = """{
@@ -68,7 +68,7 @@ class log_management:
         Raises:
             IOError: If unable to write to logfile
         """
-        logdata = "%s: %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), data)
+        logdata = "%s: %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), data)
         if self.can_log:
             try:  # Try to write to log, create log dir if fail
                 with open(self.logfile, 'a') as f:
@@ -81,7 +81,7 @@ class log_management:
 
     def _console(self, data, timestamp=False):
         if timestamp:
-            logdata = "%s: %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), data)
+            logdata = "%s: %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), data)
         else:
             logdata = data
         print(logdata, flush=True)
